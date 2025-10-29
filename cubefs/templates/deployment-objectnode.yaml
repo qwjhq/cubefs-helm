@@ -1,6 +1,5 @@
 {{- if .Values.component.objectnode }}
 {{- $envAll := . }}
-
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -12,26 +11,26 @@ spec:
   replicas: {{ .Values.objectnode.replicas }}
   selector:
     matchLabels:
-{{ tuple $envAll .Release.Namespace "objectnode" | include "helm-toolkit.metadata_labels" | indent 6 }}
+{{ tuple $envAll .Release.Namespace "objectnode" | include "helm-toolkit.labels" | indent 6 }}
   template:
     metadata:
       labels:
-{{ tuple $envAll .Release.Namespace "objectnode" | include "helm-toolkit.metadata_labels" | indent 8 }}
+{{ tuple $envAll .Release.Namespace "objectnode" | include "helm-toolkit.labels" | indent 8 }}
     spec:
       terminationGracePeriodSeconds: 60
-    {{- with .Values.objectnode.nodeSelector }}
+      {{- with .Values.objectnode.nodeSelector }}
       nodeSelector:
 {{ toYaml . | indent 8 }}
-    {{- end }}
+      {{- end }}
       {{- with .Values.objectnode.tolerations }}
       tolerations:
 {{ toYaml . | indent 8 }}
-          {{- end }}
+      {{- end }}
       initContainers:
         - name: check-master-service
-          image: {{ $.Values.image.server }}
-          imagePullPolicy: {{ $.Values.image.pull_policy }}
-          command: [ "/bin/bash", "/cfs/bin/check-master-service.sh" ]
+          image: {{ .Values.image.server }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/bash", "/cfs/bin/check-master-service.sh"]
           env:
             - name: CBFS_MASTER_SERVICE_PORT
               value: {{ include "cubefs.master-service.with.port" . | quote }}
@@ -40,39 +39,11 @@ spec:
               mountPath: /cfs/bin/check-master-service.sh
               subPath: check-master-service.sh
               readOnly: true
-        - name: init-config
-          image: {{ $.Values.image.server }}
-          imagePullPolicy: {{ $.Values.image.pull_policy }}
-          command: [ "/bin/bash", "/cfs/bin/config-objectnode.sh" ]
-          env:
-            - name: TZ
-              value: Asia/Shanghai
-            - name: CBFS_OBJECTNODE_PORT
-              value: {{ .Values.objectnode.port | quote }}
-            - name: CBFS_OBJECTNODE_PROF
-              value: {{ .Values.objectnode.prof | quote }}
-            - name: CBFS_OBJECTNODE_LOG_LEVEL
-              value: {{ .Values.objectnode.log_level | quote }}
-            - name: CBFS_MASTER_ADDRS
-              value: {{ include "cubefs.master.address.array" . | quote }}
-            - name: CBFS_OBJECTNODE_EXPORTER_PORT
-              value: {{ .Values.objectnode.exporter_port | quote }}
-            - name: CBFS_OBJECTNODE_REGION
-              value: {{ .Values.objectnode.region }}
-            - name: CBFS_OBJECTNODE_DOMAINS
-              value: {{ .Values.objectnode.domains }}
-          volumeMounts:
-            - name: cubefs-bin
-              mountPath: /cfs/bin/config-objectnode.sh
-              subPath: config-objectnode.sh
-              readOnly: true
-            - name: cubefs-conf
-              mountPath: /cfs/conf
       containers:
         - name: objectnode-pod
-          image: {{ $.Values.image.server }}
+          image: {{ .Values.image.server }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: [ "/bin/bash", "/cfs/bin/start.sh" ]
+          command: ["/bin/bash", "/cfs/bin/start.sh"]
           securityContext:
             privileged: true
           env:
@@ -88,15 +59,22 @@ spec:
               subPath: start-objectnode.sh
               readOnly: true
             - name: cubefs-conf
-              mountPath: /cfs/conf
-{{ tuple $envAll $envAll.Values.objectnode.resources | include "helm-toolkit.snippets.kubernetes_resources" | indent 10 }}
+              mountPath: /cfs/conf/objectnode.json
+              subPath: objectnode.json
+{{ tuple $envAll .Values.objectnode.resources | include "helm-toolkit.snippets.kubernetes_resources" | indent 10 }}
+      {{- if .Values.image.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.image.imagePullSecrets | indent 8 }}
+      {{- end }}
       volumes:
         - name: cubefs-bin
           configMap:
             name: cubefs-bin
             defaultMode: 0555
         - name: cubefs-conf
-          emptyDir: { }
+          configMap:
+            name: cubefs-conf
+            defaultMode: 0555
 {{ end }}
 
 

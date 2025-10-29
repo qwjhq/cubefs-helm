@@ -1,6 +1,5 @@
 {{- if .Values.component.metanode }}
 {{- $envAll := . }}
-
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -8,23 +7,22 @@ metadata:
   name: metanode
   labels:
 {{ tuple $envAll .Release.Namespace "metanode" | include "helm-toolkit.metadata_labels" | indent 4 }}
-
 spec:
   updateStrategy:
     type: OnDelete
   selector:
     matchLabels:
-{{ tuple $envAll .Release.Namespace "metanode" | include "helm-toolkit.metadata_labels" | indent 6 }}
+{{ tuple $envAll .Release.Namespace "metanode" | include "helm-toolkit.labels" | indent 6 }}
   template:
     metadata:
       labels:
-{{ tuple $envAll .Release.Namespace "metanode" | include "helm-toolkit.metadata_labels" | indent 8 }}
+{{ tuple $envAll .Release.Namespace "metanode" | include "helm-toolkit.labels" | indent 8 }}
     spec:
       terminationGracePeriodSeconds: 60
-    {{- with .Values.metanode.nodeSelector }}
+      {{- with .Values.metanode.nodeSelector }}
       nodeSelector:
 {{ toYaml . | indent 8 }}
-    {{- end }}
+      {{- end }}
       {{- with .Values.metanode.tolerations }}
       tolerations:
 {{ toYaml . | indent 8 }}
@@ -35,9 +33,9 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       initContainers:
         - name: check-master-service
-          image: {{ $.Values.image.server }}
-          imagePullPolicy: {{ $.Values.image.pull_policy }}
-          command: [ "/bin/bash", "/cfs/bin/check-master-service.sh" ]
+          image: {{ .Values.image.server }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/bash", "/cfs/bin/check-master-service.sh"]
           env:
             - name: CBFS_MASTER_SERVICE_PORT
               value: {{ include "cubefs.master-service.with.port" . | quote }}
@@ -46,54 +44,20 @@ spec:
               mountPath: /cfs/bin/check-master-service.sh
               subPath: check-master-service.sh
               readOnly: true
-        - name: init-config
-          image: {{ $.Values.image.server }}
-          imagePullPolicy: {{ $.Values.image.pull_policy }}
-          command: [ "/bin/bash", "/cfs/bin/config-metanode.sh" ]
-          env:
-            - name: TZ
-              value: Asia/Shanghai
-            - name: CBFS_METANODE_PORT
-              value: {{ .Values.metanode.port | quote }}
-            - name: CBFS_METANODE_PROF
-              value: {{ .Values.metanode.prof | quote }}
-            - name: CBFS_METANODE_LOCALIP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-            - name: CBFS_METANODE_LOG_LEVEL
-              value: {{ .Values.metanode.log_level | quote }}
-            - name: CBFS_METANODE_RAFT_HEARTBEAT_PORT
-              value: {{ .Values.metanode.raft_heartbeat | quote }}
-            - name: CBFS_METANODE_RAFT_REPLICA_PORT
-              value: {{ .Values.metanode.raft_replica | quote }}
-            - name: CBFS_METANODE_EXPORTER_PORT
-              value: {{ .Values.metanode.exporter_port | quote }}
-            - name: CBFS_MASTER_ADDRS
-              value: {{ include "cubefs.master.address.array" . | quote }}
-            - name: CBFS_MASTER_TOTAL_MEM
-              value: {{ .Values.metanode.total_mem | quote }}
-            - name: CBFS_CONSUL_ADDR
-              value: {{ tuple $envAll | include "cubefs.monitor.consul.url" | quote }}
-          volumeMounts:
-            - name: cubefs-bin
-              mountPath: /cfs/bin/config-metanode.sh
-              subPath: config-metanode.sh
-              readOnly: true
-            - name: cubefs-override
-              mountPath: /cfs/conf-override
-            - name: cubefs-conf
-              mountPath: /cfs/conf
       containers:
         - name: metanode-pod
-          image: {{ $.Values.image.server }}
+          image: {{ .Values.image.server }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: [ "/bin/bash", "/cfs/bin/start.sh" ]
+          command: ["/bin/bash", "/cfs/bin/start.sh"]
           securityContext:
             privileged: true
           env:
             - name: TZ
               value: Asia/Shanghai
+            - name: CBFS_METANODE_LOCALIP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
           ports:
 {{ tuple $envAll "port" .Values.metanode.port | include "helm-toolkit.utils.container_port" | indent 12 }}
 {{ tuple $envAll "prof" .Values.metanode.prof | include "helm-toolkit.utils.container_port" | indent 12 }}
@@ -103,44 +67,56 @@ spec:
           readinessProbe:
             tcpSocket:
               port: {{ .Values.metanode.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.metanode.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            timeoutSeconds: 10
           volumeMounts:
             - name: cubefs-bin
               mountPath: /cfs/bin/start.sh
               subPath: start-metanode.sh
               readOnly: true
             - name: cubefs-conf
-              mountPath: /cfs/conf
-            {{- if $.Values.path.log }}
+              mountPath: /conf/metanode.json
+              subPath: metanode.json
+            {{- if .Values.path.log }}
             - name: pod-log-path
               mountPath: /cfs/logs
               readOnly: false
             {{- end }}
-            {{- if $.Values.path.data }}
+            {{- if .Values.path.data }}
             - name: pod-data-path
               mountPath: /cfs/data
               readOnly: false
             {{- end }}
-{{ tuple $envAll $envAll.Values.metanode.resources | include "helm-toolkit.snippets.kubernetes_resources" | indent 10 }}
+{{ tuple $envAll .Values.metanode.resources | include "helm-toolkit.snippets.kubernetes_resources" | indent 10 }}
+      {{- if .Values.image.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.image.imagePullSecrets | indent 8 }}
+      {{- end }}
       volumes:
         - name: cubefs-bin
           configMap:
             name: cubefs-bin
             defaultMode: 0555
-        - name: cubefs-override
-          configMap:
-            name: cubefs-config-override
-            defaultMode: 0555
         - name: cubefs-conf
-          emptyDir: { }
-        {{- if $.Values.path.log }}
+          configMap:
+            name: cubefs-conf
+            defaultMode: 0555
+        {{- if .Values.path.log }}
         - name: pod-log-path
           hostPath:
-            path: {{ $.Values.path.log }}
+            path: {{ .Values.path.log }}
         {{- end }}
-        {{- if $.Values.path.data }}
+        {{- if .Values.path.data }}
         - name: pod-data-path
           hostPath:
-            path: {{ $.Values.path.data }}
+            path: {{ .Values.path.data }}
         {{- end }}
 {{ end }}
 

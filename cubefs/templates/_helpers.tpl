@@ -16,6 +16,7 @@ Expand the name of the chart.
 {{- end -}}
 {{- end -}}
 
+
 {{- define "cubefs.master-service.with.port" -}}
 master-service:{{- $.Values.master.port -}}
 {{- end -}}
@@ -25,6 +26,13 @@ master-service
 {{- end -}}
 
 {{- define "cubefs.master.address.array" -}}
+[{{- range $i, $e := until (.Values.master.replicas | int) -}}
+{{- if ne $i 0 }},{{ end }}"master-{{ $i }}.master-service:{{ $.Values.master.port }}"
+{{- end -}}
+]
+{{- end -}}
+
+{{- define "cubefs.master.address.string" -}}
 {{- range $i, $e := until (.Values.master.replicas | int) -}}
 {{ if ne $i 0 }},{{ end }}master-{{ $i }}.master-service:{{- $.Values.master.port -}}
 {{- end -}}
@@ -62,6 +70,14 @@ http://prometheus-service:{{- $envAll.Values.prometheus.port }}
 app.kubernetes.io/name: {{ $application }}
 app.kubernetes.io/component: {{ $component }}
 app.kubernetes.io/version: {{ $envAll.Chart.Version }}
+{{- end -}}
+
+{{- define "helm-toolkit.labels" -}}
+{{- $envAll := index . 0 -}}
+{{- $application := index . 1 -}}
+{{- $component := index . 2 -}}
+app.kubernetes.io/name: {{ $application }}
+app.kubernetes.io/component: {{ $component }}
 {{- end -}}
 
 {{- define "helm-toolkit.utils.template" -}}

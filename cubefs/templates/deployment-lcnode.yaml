@@ -1,36 +1,31 @@
-{{- if .Values.component.datanode }}
+{{- if .Values.component.lcnode }}
 {{- $envAll := . }}
 ---
 apiVersion: apps/v1
-kind: DaemonSet
+kind: Deployment
 metadata:
-  name: datanode
+  name: lcnode
   labels:
-{{ tuple $envAll .Release.Namespace "datanode" | include "helm-toolkit.metadata_labels" | indent 4 }}
+{{ tuple $envAll .Release.Namespace "lcnode" | include "helm-toolkit.metadata_labels" | indent 4 }}
 spec:
-  updateStrategy:
-    type: OnDelete
+  replicas: {{ .Values.lcnode.replicas }}
   selector:
     matchLabels:
-{{ tuple $envAll .Release.Namespace "datanode" | include "helm-toolkit.labels" | indent 6 }}
+{{ tuple $envAll .Release.Namespace "lcnode" | include "helm-toolkit.labels" | indent 6 }}
   template:
     metadata:
       labels:
-{{ tuple $envAll .Release.Namespace "datanode" | include "helm-toolkit.labels" | indent 8 }}
+{{ tuple $envAll .Release.Namespace "lcnode" | include "helm-toolkit.labels" | indent 8 }}
     spec:
       terminationGracePeriodSeconds: 60
-      {{- with .Values.datanode.nodeSelector }}
+      {{- with .Values.lcnode.nodeSelector }}
       nodeSelector:
 {{ toYaml . | indent 8 }}
       {{- end }}
-      {{- with .Values.datanode.tolerations }}
+      {{- with .Values.lcnode.tolerations }}
       tolerations:
 {{ toYaml . | indent 8 }}
       {{- end }}
-      hostNetwork: true
-      priorityClassName: cubefs-high-priority
-      hostPID: false
-      dnsPolicy: ClusterFirstWithHostNet
       initContainers:
         - name: check-master-service
           image: {{ .Values.image.server }}
@@ -45,45 +40,38 @@ spec:
               subPath: check-master-service.sh
               readOnly: true
       containers:
-        - name: datanode-pod
+        - name: lcnode-pod
           image: {{ .Values.image.server }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["/bin/bash", "/cfs/bin/start.sh"]
-          securityContext:
-            privileged: true
           env:
             - name: TZ
               value: Asia/Shanghai
-            - name: CBFS_DATANODE_LOCALIP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
           ports:
-{{ tuple $envAll "port" .Values.datanode.port | include "helm-toolkit.utils.container_port" | indent 12 }}
-{{ tuple $envAll "prof" .Values.datanode.prof | include "helm-toolkit.utils.container_port" | indent 12 }}
-{{ tuple $envAll "raft-heartbeat" .Values.datanode.raft_heartbeat | include "helm-toolkit.utils.container_port" | indent 12 }}
-{{ tuple $envAll "raft-replica" .Values.datanode.raft_replica | include "helm-toolkit.utils.container_port" | indent 12 }}
-{{ tuple $envAll "exporter-port" .Values.datanode.exporter_port | include "helm-toolkit.utils.container_port" | indent 12 }}
+{{ tuple $envAll "port" .Values.lcnode.port | include "helm-toolkit.utils.container_port" | indent 12 }}
+{{ tuple $envAll "prof" .Values.lcnode.prof | include "helm-toolkit.utils.container_port" | indent 12 }}
+{{ tuple $envAll "exporter-port" .Values.lcnode.exporter_port | include "helm-toolkit.utils.container_port" | indent 12 }}
           readinessProbe:
             tcpSocket:
-              port: {{ .Values.datanode.port }}
+              port: {{ .Values.lcnode.port }}
             initialDelaySeconds: 10
             periodSeconds: 30
             timeoutSeconds: 5
           livenessProbe:
             tcpSocket:
-              port: {{ .Values.datanode.port }}
+              port: {{ .Values.lcnode.port }}
             initialDelaySeconds: 30
             periodSeconds: 60
             timeoutSeconds: 10
           volumeMounts:
             - name: cubefs-bin
               mountPath: /cfs/bin/start.sh
-              subPath: start-datanode.sh
+              subPath: start-lcnode.sh
               readOnly: true
             - name: cubefs-conf
-              mountPath: /conf/datanode.json
-              subPath: datanode.json
+              mountPath: /cfs/conf/lcnode.json
+              subPath: lcnode.json
+              readOnly: true
             {{- if .Values.path.log }}
             - name: pod-log-path
               mountPath: /cfs/logs
@@ -94,10 +82,10 @@ spec:
               mountPath: /cfs/data
               readOnly: false
             {{- end }}
-{{- range .Values.datanode.disks }}
-{{ tuple $envAll . | include "helm-toolkit.utils.datanode.disks.volumes_mount" | indent 12 }}
-{{- end }}
-{{ tuple $envAll .Values.datanode.resources | include "helm-toolkit.snippets.kubernetes_resources" | indent 10 }}
+          securityContext:
+            capabilities:
+              add: [ "SYS_RESOURCE" ]
+{{ tuple $envAll .Values.lcnode.resources | include "helm-toolkit.snippets.kubernetes_resources" | indent 10 }}
       {{- if .Values.image.imagePullSecrets }}
       imagePullSecrets:
 {{ toYaml .Values.image.imagePullSecrets | indent 8 }}
@@ -121,7 +109,4 @@ spec:
           hostPath:
             path: {{ .Values.path.data }}
         {{- end }}
-{{- range .Values.datanode.disks }}
-{{ tuple $envAll . | include "helm-toolkit.utils.datanode.disks.volumes" | indent 8 }}
-{{- end }}
 {{ end }}

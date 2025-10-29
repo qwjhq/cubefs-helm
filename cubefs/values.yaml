@@ -1,13 +1,16 @@
 # Select which component to install
+  namespace:
 component:
   master: true
   datanode: true
   metanode: true
   objectnode: true
   client: true
-  csi: true
-  monitor: true
-  ingress: true
+  lcnode: true
+  dashboard: true
+  csi: false
+  monitor: false
+  ingress: false
   blobstore_clustermgr: false
   blobstore_blobnode: false
   blobstore_proxy: false
@@ -19,12 +22,13 @@ kubernetes:
   version: ""
 
 image:
-  server: cubefs/cfs-server:v3.5.0
-  client: cubefs/cfs-client:v3.5.0
-  blobstore: cubefs/blobstore:v3.5.0
+  server: cubefs/cfs-server:v3.5.2
+  client: cubefs/cfs-client:v3.5.2
+  blobstore: cubefs/blobstore:v3.4.0
+  dashboard: cubefs/cubefs-dashboard:v2
 
   # CSI related images
-  csi_driver: cubefs/cfs-csi-driver:v3.5.0
+  csi_driver: cubefs/cfs-csi-driver:v3.5.2
   csi_provisioner: registry.k8s.io/sig-storage/csi-provisioner:v2.2.2
   csi_attacher: registry.k8s.io/sig-storage/csi-attacher:v3.4.0
   csi_resizer: registry.k8s.io/sig-storage/csi-resizer:v1.3.0
@@ -34,6 +38,7 @@ image:
   prometheus: prom/prometheus:v2.13.1
   consul: consul:1.6.1
   pull_policy: "IfNotPresent"
+  pull_secrets: []
 
 log:
   # Do not redirect the standard output into a file, recommend to
@@ -66,14 +71,16 @@ master:
   exporter_port: 9500
   # Reserved memory in bytes for each metanode, if available memory less than this value, the metanode will be unwritable
   metanode_reserved_mem: "67108864"
+  metanode_threshold_mem_rate: "0.98" # default 75% metanode memory usage will not work, set 98%
+  legacy_data_media_type: "2" # version upgrate >= v3.5.1, old cluster disk media type hdd 2, ssd 1
   resources:
-    enabled: false
+    enabled: true
     requests:
-      memory: "8Gi"
-      cpu: "2000m"
+      memory: "4Gi"
+      cpu: "2"
     limits:
-      memory: "32Gi"
-      cpu: "8000m"
+      memory: "16Gi"
+      cpu: "8"
 
 metanode:
   # NodeSelector for metanode daemonset
@@ -83,7 +90,7 @@ metanode:
   log_level: error
   # Total memory metanode can use, recommended to be configured
   # as 80% of physical machine memory
-  total_mem: "26843545600"
+  total_mem: "107374182400" # 100G
   port: 17210
   prof: 17220
   raft_heartbeat: 17230
@@ -93,15 +100,10 @@ metanode:
     enabled: true
     requests:
       memory: "32Gi"
-      cpu: "2000m"
+      cpu: "2"
     limits:
-      memory: "256Gi"
-      cpu: "8000m"
-  # Similar to datanode.config_override, all the config
-  # listed here will be merge into metanode config file.
-  config_override: |
-    {
-    }
+      memory: "100Gi"
+      cpu: "12"
 
 datanode:
   # NodeSelector for datanode daemonset
@@ -119,34 +121,20 @@ datanode:
   # disk_mount_point: the mount point of disk in machine
   # reserved_space: similar to metanode reserved space, if disk available
   # space less than this number, then the disk will be unwritable
+  # 5GB
   disks:
-    - /data0:21474836480
-    - /data1:21474836480
+    - "/data1:5368709120"
+    - "/data2:5368709120"
+  mediaType: 2 # hdd 2 ssd 1
   resources:
-    enabled: false
+    enabled: true
     requests:
-      memory: "8Gi"
-      cpu: "2000m"
+      memory: "4Gi"
+      cpu: "2"
     limits:
-      memory: "32Gi"
-      cpu: "8000m"
-  # Format: "${Node_IP}":${JSON_CONFIG}
-  # There's a demo server config 1.1.1.1 left for example,
-  # All the config written here will be merged to the final
-  # '/cfs/conf/datanode.json' file.
-  # Example:  {
-  #  "1.1.1.1": {
-  #   "logDir": "/data/cfs/log",
-  #   "disks": [
-  #    "/disk/nvme0n1:59000000000",
-  #    "/disk/nvme1n1:59000000000",
-  #    "/disk/nvme2n1:59000000000"
-  #   ]
-  #  }
-  # }
-  config_override: |
-    {
-    }
+      memory: "64Gi"
+      cpu: "8"
+
 
 objectnode:
   # The replicas of object component, object node is stateless,
@@ -161,16 +149,18 @@ objectnode:
   tolerations: [ ]
   region: "spark"
   # Domains listed here will be used in resolution of pan-domain names to parse bucket name
-  domains: "objectcfs.cubefs.io,objectnode.cubefs.io"
+  domains:
+    - "objectcfs.cubefs.io"
+    - "objectnode.cubefs.io"
   host: objectnode.cubefs.com
   resources:
-    enabled: false
+    enabled: true
     requests:
-      memory: "512Mi"
-      cpu: "500m"
+      memory: "1Gi"
+      cpu: "1"
     limits:
-      memory: "1024Mi"
-      cpu: "1000m"
+      memory: "8Gi"
+      cpu: "4"
 
 client:
   replicas: 1
@@ -180,7 +170,45 @@ client:
   exporter_port: 9530
   prof: 17410
   resources:
-    enabled: false
+    enabled: true
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "1024Mi"
+      cpu: "1000m"
+
+lcnode:
+  replicas: 3
+  log_level: error
+  port: 80
+  prof: 7011
+  exporter_port: 9500
+  nodeSelector:
+    "component.cubefs.io/lcnode": "enabled"
+  tolerations: [ ]
+  resources:
+    enabled: true
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "1024Mi"
+      cpu: "1000m"
+
+dashboard:
+  replicas: 1
+  port: 80
+  mysql_host: 127.0.0.1
+  mysql_port: 3306
+  mysql_slave_host: 127.0.0.1
+  mysql_slave_port: 3306
+  mysql_user: cubefs
+  mysql_pwd: 
+  mysql_db: cubefs
+  tolerations: [ ]
+  resources:
+    enabled: true
     requests:
       memory: "512Mi"
       cpu: "500m"
@@ -197,11 +225,11 @@ csi:
   controller:
     tolerations: [ ]
     nodeSelector:
-      "component.cubefs.io/csi": "enabled"
+      "node-role.kubernetes.io/cfs-csi": "true"
   node:
     tolerations: [ ]
     nodeSelector:
-      "component.cubefs.io/csi": "enabled"
+      "node-role.kubernetes.io/cfs-csi": "true"
     resources:
       enabled: false
       requests:

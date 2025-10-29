@@ -13,11 +13,11 @@ spec:
   replicas: {{ .Values.consul.replicas }}
   selector:
     matchLabels:
-{{ tuple $envAll .Release.Namespace "consul" | include "helm-toolkit.metadata_labels" | indent 6 }}
+{{ tuple $envAll .Release.Namespace "consul" | include "helm-toolkit.labels" | indent 6 }}
   template:
     metadata:
       labels:
-{{ tuple $envAll .Release.Namespace "consul" | include "helm-toolkit.metadata_labels" | indent 8 }}
+{{ tuple $envAll .Release.Namespace "consul" | include "helm-toolkit.labels" | indent 8 }}
     spec:
       containers:
         - name: consul-pod

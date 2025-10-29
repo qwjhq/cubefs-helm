@@ -13,11 +13,11 @@ spec:
   replicas: {{ .Values.client.replicas }}
   selector:
     matchLabels:
-{{ tuple $envAll .Release.Namespace "client" | include "helm-toolkit.metadata_labels" | indent 6 }}
+{{ tuple $envAll .Release.Namespace "client" | include "helm-toolkit.labels" | indent 6 }}
   template:
     metadata:
       labels:
-{{ tuple $envAll .Release.Namespace "client" | include "helm-toolkit.metadata_labels" | indent 8 }}
+{{ tuple $envAll .Release.Namespace "client" | include "helm-toolkit.labels" | indent 8 }}
     spec:
       initContainers:
         - name: check-master-service
@@ -32,34 +32,6 @@ spec:
               mountPath: /cfs/bin/check-master-service.sh
               subPath: check-master-service.sh
               readOnly: true
-        - name: init-config
-          image: {{ $.Values.image.client }}
-          imagePullPolicy: {{ $.Values.image.pull_policy }}
-          command: [ "/bin/bash", "/cfs/bin/config-client.sh" ]
-          env:
-            - name: TZ
-              value: Asia/Shanghai
-            - name: CBFS_CLIENT_PROF
-              value: {{ .Values.client.prof | quote }}
-            - name: CBFS_CLIENT_LOG_LEVEL
-              value: {{ .Values.client.log_level | quote }}
-            - name: CBFS_MASTER_ADDRS
-              value: {{ include "cubefs.master.address.array" . | quote }}
-            - name: CBFS_CLIENT_VOL_NAME
-              value: {{ .Values.client.vol_name | quote }}
-            - name: CBFS_CLIENT_OWNER
-              value: {{ .Values.client.owner | quote }}
-            - name: CBFS_CLIENT_EXPORTER_PORT
-              value: {{ .Values.client.exporter_port | quote }}
-            - name: CBFS_CONSUL_ADDR
-              value: {{ tuple $envAll | include "cubefs.monitor.consul.url" | quote }}
-          volumeMounts:
-            - name: cubefs-bin
-              mountPath: /cfs/bin/config-client.sh
-              subPath: config-client.sh
-              readOnly: true
-            - name: cubefs-conf
-              mountPath: /cfs/conf
         - name: init-volume
           image: {{ $.Values.image.client }}
           imagePullPolicy: {{ $.Values.image.pull_policy }}
@@ -97,7 +69,11 @@ spec:
               subPath: start-client.sh
               readOnly: true
             - name: cubefs-conf
-              mountPath: /cfs/conf
+              mountPath: /cfs/conf/fuse.json
+              subPath: fuse.json
+            - name: cubefs-conf
+              mountPath: /root/.cfs-cli.json
+              subPath: cfs-cli.json
             {{- if $.Values.path.log }}
             - name: pod-log-path
               mountPath: /cfs/logs
@@ -109,13 +85,18 @@ spec:
               readOnly: false
             {{- end }}
 {{ tuple $envAll $envAll.Values.client.resources | include "helm-toolkit.snippets.kubernetes_resources" | indent 10 }}
+      {{- if .Values.image.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml .Values.imagePullSecrets | nindent 8 }}
+      {{- end }}
       volumes:
         - name: cubefs-bin
           configMap:
             name: cubefs-bin
             defaultMode: 0555
         - name: cubefs-conf
-          emptyDir: {}
+          configMap:
+            name: cubefs-conf
+            defaultMode: 0555
         {{- if $.Values.path.log }}
         - name: pod-log-path
           hostPath:

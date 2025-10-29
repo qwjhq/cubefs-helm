@@ -1,0 +1,78 @@
+{{- if .Values.component.dashboard }}
+{{- $envAll := . }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cfs-dashboard
+  labels:
+{{ tuple $envAll .Release.Namespace "dashboard" | include "helm-toolkit.metadata_labels" | indent 4 }}
+spec:
+  replicas: {{ .Values.dashboard.replicas | default 1 }}
+  selector:
+    matchLabels:
+{{ tuple $envAll .Release.Namespace "dashboard" | include "helm-toolkit.labels" | indent 6 }}
+  template:
+    metadata:
+      labels:
+{{ tuple $envAll .Release.Namespace "dashboard" | include "helm-toolkit.labels" | indent 8 }}
+    spec:
+      terminationGracePeriodSeconds: 30
+      {{- with .Values.dashboard.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      {{- with .Values.dashboard.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      containers:
+        - name: cfs-dashboard
+          image: {{ .Values.image.dashboard }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /bin/bash
+            - -c
+            - cd /cfs/bin && /cfs/bin/cfs-gui -c /cfs/conf/config.yml
+          env:
+            - name: TZ
+              value: Asia/Shanghai
+          ports:
+{{ tuple $envAll "port" .Values.dashboard.port | include "helm-toolkit.utils.container_port" | indent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.dashboard.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.dashboard.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            timeoutSeconds: 10
+          volumeMounts:
+            - name: cubefs-bin
+              mountPath: /cfs/bin/start.sh
+              subPath: start-dashboard.sh
+              readOnly: true
+            - name: cubefs-conf
+              mountPath: /cfs/conf/config.yml
+              subPath: config.yml
+{{ tuple $envAll .Values.dashboard.resources | include "helm-toolkit.snippets.kubernetes_resources" | indent 10 }}
+      {{- if .Values.image.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.image.imagePullSecrets | indent 8 }}
+      {{- end }}
+      volumes:
+        - name: cubefs-bin
+          configMap:
+            name: cubefs-bin
+            defaultMode: 0555
+        - name: cubefs-conf
+          configMap:
+            name: cubefs-conf
+            defaultMode: 0555
+{{ end }}

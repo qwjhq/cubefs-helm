@@ -13,5 +13,5 @@ spec:
       protocol: TCP
       targetPort: {{ .Values.prometheus.port }}
   selector:
-{{ tuple $envAll .Release.Namespace "prometheus" | include "helm-toolkit.metadata_labels" | indent 4 }}
+{{ tuple $envAll .Release.Namespace "prometheus" | include "helm-toolkit.labels" | indent 4 }}
 {{ end }}

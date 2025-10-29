@@ -1,5 +1,12 @@
 #!/bin/bash
 # set -ex
+echo "set master ID and IP "
+CBFS_HOSTNAME_INDEX=`echo $POD_NAME | awk -F '-' '{print $2}'`
+CBFS_ID=$(($CBFS_HOSTNAME_INDEX+1))
+cp /conf/master.json /cfs/conf/master.json
+sed -i "s/MASTERID/$CBFS_ID/" /cfs/conf/master.json
+sed -i "s/MASTERIP/$POD_IP/" /cfs/conf/master.json
+
 
 mkdir -p /cfs/data/master/raft
 mkdir -p /cfs/data/master/rocksdbstore

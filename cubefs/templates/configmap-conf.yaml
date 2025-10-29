@@ -1,0 +1,147 @@
+{{- $envAll := . }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cubefs-conf
+data:
+{{- if .Values.component.master }}
+  master.json: |
+    {
+      "role": "master",
+      "ip": "MASTERIP",
+      "listen": {{ .Values.master.port | quote }},
+      "prof": {{ .Values.master.prof | quote }},
+      "id": "MASTERID",
+      "peers": {{ include "cubefs.master.peers" . | quote }},
+      "retainLogs": {{ .Values.master.retain_logs | quote }},
+      "logDir": "/cfs/logs",
+      "logLevel": {{ .Values.master.log_level | quote }},
+      "walDir": "/cfs/data/master/raft",
+      "storeDir": "/cfs/data/master/rocksdbstore",
+      "consulAddr": {{ tuple $envAll | include "cubefs.monitor.consul.url" | quote }},
+      "exporterPort": {{ .Values.master.exporter_port | quote }},
+      "clusterName": {{ .Values.master.cluster | quote }},
+      "metaNodeReservedMem": {{ .Values.master.metanode_reserved_mem | quote }},
+      "threshold": {{ .Values.master.metanode_threshold_mem_rate | quote }},
+      "legacyDataMediaType": {{ .Values.master.legacy_data_media_type | quote }}
+    }
+{{- end }}
+{{- if .Values.component.datanode }}
+  datanode.json: |
+    {
+      "role": "datanode",
+      "listen": {{ .Values.datanode.port | quote }},
+      "localIP": "LOCALIP",
+      "prof": {{ .Values.datanode.prof | quote }},
+      "logDir": "/cfs/logs",
+      "logLevel": {{ .Values.datanode.log_level | quote }},
+      "raftHeartbeat": {{ .Values.datanode.raft_heartbeat | quote }},
+      "raftReplica": {{ .Values.datanode.raft_replica | quote }},
+      "raftDir": "/cfs/data/datanode/raft",
+      "consulAddr": {{ tuple $envAll | include "cubefs.monitor.consul.url" | quote }},
+      "exporterPort": {{ .Values.datanode.exporter_port | quote }},
+      "masterAddr": {{ include "cubefs.master.address.array" . }},
+      "disks": [
+        {{- range $index, $disk := .Values.datanode.disks }}
+        "{{ $disk }}"{{ if ne (add $index 1) (len $.Values.datanode.disks) }},{{ end }}
+        {{- end }}
+      ]
+      {{- if .Values.datanode.mediaType }},
+      "mediaType": {{ .Values.datanode.mediaType | quote }}
+      {{- end }}
+    }
+{{- end }}
+{{- if .Values.component.metanode }}
+  metanode.json: |
+    {
+      "role": "metanode",
+      "listen": {{ .Values.metanode.port | quote }},
+      "prof": {{ .Values.metanode.prof | quote }},
+      "localIP": "LOCALIP",
+      "logLevel": {{ .Values.metanode.log_level | quote }},
+      "metadataDir": "/cfs/data/metanode/meta",
+      "logDir": "/cfs/logs",
+      "raftDir": "/cfs/data/metanode/raft",
+      "raftHeartbeatPort": {{ .Values.metanode.raft_heartbeat | quote }},
+      "raftReplicaPort": {{ .Values.metanode.raft_replica | quote }},
+      "consulAddr": {{ tuple $envAll | include "cubefs.monitor.consul.url" | quote }},
+      "exporterPort": {{ .Values.metanode.exporter_port | quote }},
+      "totalMem": {{ .Values.metanode.total_mem | quote }},
+      "masterAddr": {{  include "cubefs.master.address.array" . }}
+    }
+{{- end }}
+{{- if .Values.component.objectnode }}
+  objectnode.json: |
+    {
+      "role": "objectnode",
+      "listen": {{ .Values.objectnode.port | quote }},
+      "prof": {{ .Values.objectnode.prof | quote }},
+      "logLevel": {{ .Values.objectnode.log_level | quote }},
+      "logDir": "/cfs/logs",
+      "domains": [
+        {{- range $index, $domains := .Values.objectnode.domains }}
+        "{{ $domains }}"{{ if ne (add $index 1) (len $.Values.objectnode.domains) }},{{ end }}
+        {{- end }}
+      ],
+      "region": {{ .Values.objectnode.region | quote }},
+      "exporterPort": {{ .Values.objectnode.exporter_port | quote }},
+      "masterAddr":  {{  include "cubefs.master.address.array" .  }}
+    }
+{{- end }}
+{{- if .Values.component.lcnode }}
+  lcnode.json: |
+    {
+      "role": "lcnode",
+      "listen": {{ .Values.lcnode.port | quote }},
+      "prof": {{ .Values.lcnode.prof | quote }},
+      "logLevel": {{ .Values.lcnode.log_level | quote }},
+      "logDir": "/cfs/logs",
+      "exporterPort": {{ .Values.lcnode.exporter_port | quote }},
+      "masterAddr": {{ include "cubefs.master.address.array" . }}
+    }
+{{- end }}
+{{- if .Values.component.dashboard }}
+  config.yml: |
+    server:
+      port: {{ .Values.dashboard.port }}
+      mode: "prod"
+      clientIDKey: "clientIDkey"
+      static_resource:
+        enable: true
+        relative_path: "/portal"
+        root_path: "./dist"
+    prefix:
+      api: "/api/cubefs"
+    mysql:
+      host: {{ .Values.dashboard.mysql_host | quote }}
+      port: {{ .Values.dashboard.mysql_port }}
+      slaveHost: {{ .Values.dashboard.mysql_slave_host | quote }}
+      slavePort: {{ .Values.dashboard.mysql_slave_port }}
+      user: {{ .Values.dashboard.mysql_user | quote }}
+      password: {{ .Values.dashboard.mysql_pwd | quote }}
+      database: {{ .Values.dashboard.mysql_db | quote }}
+      maxIdleConn: 20
+      maxOpenConn: 300
+    cubefs:
+      master_addr: {{ include "cubefs.master.address.array" . }}
+{{- end }}
+{{- if .Values.component.client }}
+  fuse.json: |
+    {
+      "mountPoint": "/cfs/mnt",
+      "volName": {{ .Values.client.vol_name | quote }},
+      "owner": {{ .Values.client.owner | quote }},
+      "masterAddr": "{{ include "cubefs.master.address.string" . }}",
+      "logDir": "/cfs/logs",
+      "logLevel": {{ .Values.client.log_level | quote }},
+      "consulAddr": {{ tuple $envAll | include "cubefs.monitor.consul.url" | quote }},
+      "exporterPort": {{ .Values.client.exporter_port | quote }},
+      "profPort": {{ .Values.client.prof | quote }}
+    }
+  cfs-cli.json: |
+    {
+      "masterAddr": {{ include "cubefs.master.address.array" . }},
+      "timeout": 60
+    }
+{{- end }}
